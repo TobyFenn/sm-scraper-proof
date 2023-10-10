@@ -1,6 +1,24 @@
 import requests
 from bs4 import BeautifulSoup
+import sqlite3
 
+# Set up the SQLite database connection and table
+conn = sqlite3.connect('celebrity_data.db')
+cursor = conn.cursor()
+
+# Create the 'celebrities' table
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS celebrities (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    birthdate TEXT,
+    birthplace TEXT,
+    occupations TEXT
+)
+''')
+conn.commit()
+
+# Scrape the data
 URL = "https://en.wikipedia.org/wiki/Shawn_Mendes"
 response = requests.get(URL)
 response.raise_for_status()
@@ -32,9 +50,17 @@ if infobox:
         else:
             occupations = occupation_row.next_sibling.get_text(', ', strip=True).replace('\n', ', ')
 
+    # Insert the scraped data into the database
+    cursor.execute("INSERT INTO celebrities (name, birthdate, birthplace, occupations) VALUES (?, ?, ?, ?)",
+                   ("Shawn Mendes", birth_date, birth_place, occupations))
+    conn.commit()
+
     print("Birth Date:", birth_date)
     print("Birth Place:", birth_place)
     print("Occupations:", occupations)
 
 else:
     print("Infobox not found!")
+
+# Close the database connection
+conn.close()
