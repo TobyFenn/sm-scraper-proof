@@ -35,44 +35,38 @@ artists = [
 def extract_section_sentences(soup, section_name):
     """Extract concise sentences from a specific section like 'Early Life' or 'Personal Life'."""
     section = None
-    # Attempt to locate the section using various casings and patterns
     search_patterns = [
         section_name,
         section_name.lower(),
         section_name.split()[0].lower(),
-        section_name.replace(" ", "-").lower(),  # 'Personal-life' might be used as ID
-        section_name.replace(" ", "").lower()    # 'PersonalLife' might be used as ID
+        section_name.replace(" ", "-").lower(),
+        section_name.replace(" ", "").lower()
     ]
 
     for pattern in search_patterns:
-        section = soup.find(lambda tag: tag.name == "span" and pattern in tag.get_text(strip=True).lower())
+        section = soup.find(lambda tag: tag.name in ["h2", "h3", "h4"] and pattern in tag.get_text(strip=True).lower())
         if section:
             break
 
     if not section:
         return []
 
-    # Find all sibling tags after the specific header
-    siblings = list(section.find_parent().find_all_next())
+    # Determine the depth of our main section (h2, h3, h4, etc.)
+    section_depth = int(section.name[1])
 
-    # Store relevant sentences
+    siblings = list(section.find_all_next())
     relevant_sentences = []
 
-    # Loop through sibling tags to extract content of the specific section
     for tag in siblings:
-        # Stop when reaching another section header
-        if tag.name and tag.name.startswith("h"):
+        # Stop when reaching another section header of the same or greater depth
+        if tag.name and tag.name.startswith("h") and int(tag.name[1]) <= section_depth:
             break
 
         if tag.name == "p":
-            # Remove reference tags
             content_cleaned = re.sub(r'\[\d+\]', '', tag.text)
-
-            # Split content into sentences
             sentences = re.split(r'(?<=[.!?])\s+', content_cleaned)
 
             for sentence in sentences:
-                # Consider sentences with a length of 20 to 150 characters as short and concise
                 if 20 <= len(sentence) <= 150:
                     relevant_sentences.append(sentence.strip())
 
