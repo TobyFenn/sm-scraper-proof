@@ -65,10 +65,8 @@ def extract_section_sentences(soup, section_name, artist_name):
         f"^{last_name}",
         "^he",
         "^she",
-        "^they",
         "^his",
         "^her",
-        "^their",
     ]
     pattern = re.compile("|".join(patterns), re.IGNORECASE)
 
@@ -78,7 +76,7 @@ def extract_section_sentences(soup, section_name, artist_name):
             break
 
         if tag.name == "p":
-            content_cleaned = re.sub(r'\[\d+\]', '', tag.text)
+            content_cleaned = re.sub(r'\[.*?\]', '', tag.text)
             sentences = re.split(r'(?<=[.!?])\s+', content_cleaned)
 
             for sentence in sentences:
