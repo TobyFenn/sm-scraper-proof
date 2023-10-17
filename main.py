@@ -32,7 +32,7 @@ artists = [
 ]
 
 
-def extract_section_sentences(soup, section_name):
+def extract_section_sentences(soup, section_name, artist_name):
     """Extract concise sentences from a specific section like 'Early Life' or 'Personal Life'."""
     section = None
     search_patterns = [
@@ -57,6 +57,21 @@ def extract_section_sentences(soup, section_name):
     siblings = list(section.find_all_next())
     relevant_sentences = []
 
+    # Patterns to match for start of sentences
+    first_name = artist_name.split()[0].lower()
+    last_name = artist_name.split()[-1].lower() if len(artist_name.split()) > 1 else first_name
+    patterns = [
+        f"^{first_name}",
+        f"^{last_name}",
+        "^he",
+        "^she",
+        "^they",
+        "^his",
+        "^her",
+        "^their",
+    ]
+    pattern = re.compile("|".join(patterns), re.IGNORECASE)
+
     for tag in siblings:
         # Stop when reaching another section header of the same or greater depth
         if tag.name and tag.name.startswith("h") and int(tag.name[1]) <= section_depth:
@@ -67,10 +82,11 @@ def extract_section_sentences(soup, section_name):
             sentences = re.split(r'(?<=[.!?])\s+', content_cleaned)
 
             for sentence in sentences:
-                if 20 <= len(sentence) <= 150:
+                if 20 <= len(sentence) <= 150 and pattern.match(sentence):
                     relevant_sentences.append(sentence.strip())
 
     return relevant_sentences
+
 
 
 def extract_second_sentence(content):
@@ -92,8 +108,8 @@ for artist in artists:
 
     soup = BeautifulSoup(response.content, 'html.parser')
 
-    early_life_sentences = extract_section_sentences(soup, "Early Life")
-    personal_life_sentences = extract_section_sentences(soup, "Personal Life")
+    early_life_sentences = extract_section_sentences(soup, "Early Life", artist)
+    personal_life_sentences = extract_section_sentences(soup, "Personal Life", artist)
 
     # Extract the second sentence
     content_paragraph = soup.select_one('div.mw-parser-output > p:not(:empty)')
