@@ -9,34 +9,74 @@ cursor = conn.cursor()
 
 # Update the 'celebrities' table to include 'career_summary'
 cursor.execute('''
-CREATE TABLE IF NOT EXISTS celebrities (
+CREATE TABLE IF NOT EXISTS relevant_sentences (
     id INTEGER PRIMARY KEY,
-    name TEXT UNIQUE NOT NULL,
-    birthdate TEXT,
-    birthplace TEXT,
-    occupations TEXT,
-    career_summary TEXT
+    celebrity_id INTEGER,
+    context TEXT,  -- Added a column for context/type of the sentence
+    sentence TEXT,
+    FOREIGN KEY(celebrity_id) REFERENCES celebrities(id)
 )
 ''')
 conn.commit()
 
-# Clear the celebrities table for debugging
+# Clear the celebrities and relevant_sentences tables for debugging
 cursor.execute("DELETE FROM celebrities")
+cursor.execute("DELETE FROM relevant_sentences")
 conn.commit()
 
 # List of artists to scrape
 artists = [
-    "Shawn Mendes",
-    "Taylor Swift",
-    "Ariana Grande",
     "Ed Sheeran",
-    "Billie Eilish",
     "Post Malone",
-    "Beyonce",
-    "Rihanna",
     "Bruno Mars",
-    "Justin Bieber"
 ]
+
+
+def extract_section_sentences(soup, section_name):
+    """Extract concise sentences from a specific section like 'Early Life' or 'Personal Life'."""
+    section = None
+    # Attempt to locate the section using various casings and patterns
+    search_patterns = [
+        section_name,
+        section_name.lower(),
+        section_name.split()[0].lower(),
+        section_name.replace(" ", "-").lower(),  # 'Personal-life' might be used as ID
+        section_name.replace(" ", "").lower()    # 'PersonalLife' might be used as ID
+    ]
+
+    for pattern in search_patterns:
+        section = soup.find(lambda tag: tag.name == "span" and pattern in tag.get_text(strip=True).lower())
+        if section:
+            break
+
+    if not section:
+        return []
+
+    # Find all sibling tags after the specific header
+    siblings = list(section.find_parent().find_all_next())
+
+    # Store relevant sentences
+    relevant_sentences = []
+
+    # Loop through sibling tags to extract content of the specific section
+    for tag in siblings:
+        # Stop when reaching another section header
+        if tag.name and tag.name.startswith("h"):
+            break
+
+        if tag.name == "p":
+            # Remove reference tags
+            content_cleaned = re.sub(r'\[\d+\]', '', tag.text)
+
+            # Split content into sentences
+            sentences = re.split(r'(?<=[.!?])\s+', content_cleaned)
+
+            for sentence in sentences:
+                # Consider sentences with a length of 20 to 150 characters as short and concise
+                if 20 <= len(sentence) <= 150:
+                    relevant_sentences.append(sentence.strip())
+
+    return relevant_sentences
 
 
 def extract_second_sentence(content):
@@ -57,6 +97,9 @@ for artist in artists:
     response.raise_for_status()
 
     soup = BeautifulSoup(response.content, 'html.parser')
+
+    early_life_sentences = extract_section_sentences(soup, "Early Life")
+    personal_life_sentences = extract_section_sentences(soup, "Personal Life")
 
     # Extract the second sentence
     content_paragraph = soup.select_one('div.mw-parser-output > p:not(:empty)')
@@ -84,19 +127,37 @@ for artist in artists:
             else:
                 occupations = occupation_row.next_sibling.get_text(', ', strip=True).replace('\n', ', ')
 
-        # Insert or replace the scraped data in the database, including career_summary
+        # Updated the INSERT command to accommodate 'early_life_content' instead of 'career_summary'
         cursor.execute("""
-        INSERT OR REPLACE INTO celebrities (name, birthdate, birthplace, occupations, career_summary) 
-        VALUES (?, ?, ?, ?, ?)""",
-                       (artist, birth_date, birth_place, occupations, career_summary))
+        INSERT OR REPLACE INTO celebrities (name, birthdate, birthplace, occupations) 
+        VALUES (?, ?, ?, ?)""",
+                       (artist, birth_date, birth_place, occupations))
         conn.commit()
+
+        # Retrieve the id of the artist (either it's newly inserted or replaced)
+        cursor.execute("SELECT id FROM celebrities WHERE name = ?", (artist,))
+        artist_id = cursor.fetchone()[0]
+
+        # Insert sentences associated with this artist ID
+        for context, sentences in [("Early Life", early_life_sentences), ("Personal Life", personal_life_sentences)]:
+            if sentences:
+                for sentence in sentences:
+                    cursor.execute("INSERT INTO relevant_sentences (celebrity_id, context, sentence) VALUES (?, ?, ?)",
+                                   (artist_id, context, sentence))
+                    conn.commit()
+
+                print(f"{context} Sentences:", ', '.join(sentences))
+            else:
+                print(f"No {context} sentences found for", artist)
+
+        # print('-' * 50)
 
         print(f"Stored data for {artist}!")
         print("Birth Date:", birth_date)
         print("Birth Place:", birth_place)
         print("Occupations:", occupations)
-        print("Career Summary:", career_summary)
-        print('-' * 50)  # Print a separator for clarity
+        # print("Early Life Sentences:", early_life_sentences)
+        print('-' * 50)
 
     else:
         print(f"Infobox not found for {artist}!")
